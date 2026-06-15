@@ -4,6 +4,7 @@ import sys
 
 from analyzer import analyze
 from generator import capture, generate_suite, write_suite
+from mutator import MUTATIONS, mutation_score
 from runner import run_pytest
 from samples.legacy_repo.pricing import apply_discount, with_tax
 
@@ -84,3 +85,16 @@ def test_runner_parses_known_good_and_bad(tmp_path):
     assert good_result.passed == 1
     assert not bad_result.ok
     assert bad_result.failed == 1
+
+
+def test_mutation_score_is_deterministic_and_kills_known_mutant(tmp_path):
+    analysis = analyze(LEGACY_ROOT, package="legacy_repo")
+    suite = generate_suite(analysis)
+    score = mutation_score(ROOT / "samples", suite, tmp_path / "mutants")
+
+    assert score.total == len(MUTATIONS)
+    assert score.killed > 0
+    known = next(
+        result for result in score.results if result.mutation.id == "bulk_multiply_to_divide"
+    )
+    assert known.killed
