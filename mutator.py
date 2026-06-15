@@ -102,11 +102,11 @@ MUTATIONS: tuple[Mutation, ...] = (
         label="slugify.py <= -> <",
     ),
     Mutation(
-        id="bulk_return_none",
+        id="bulk_threshold_ge_to_gt",
         file="pricing.py",
-        find="return round(unit * qty * discount, 2)",
-        replace="return None",
-        label="pricing.py bulk_price return None",
+        find="discount = 0.9 if qty >= 10 else 1.0",
+        replace="discount = 0.9 if qty > 10 else 1.0",
+        label="pricing.py bulk_price >= -> >",
     ),
 )
 

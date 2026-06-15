@@ -3,8 +3,11 @@ import shutil
 import sys
 
 from analyzer import analyze
+from agent import forge_legacy_repo
 from generator import capture, generate_suite, write_suite
+from inject import reset_sample, run_injected_suite
 from mutator import MUTATIONS, mutation_score
+from patch import make_pr_patch
 from runner import run_pytest
 from samples.legacy_repo.pricing import apply_discount, with_tax
 
@@ -98,3 +101,36 @@ def test_mutation_score_is_deterministic_and_kills_known_mutant(tmp_path):
         result for result in score.results if result.mutation.id == "bulk_multiply_to_divide"
     )
     assert known.killed
+
+
+def test_patch_export_contains_generated_tests():
+    analysis = analyze(LEGACY_ROOT, package="legacy_repo")
+    suite = generate_suite(analysis)
+    patch = make_pr_patch(suite)
+
+    assert "b/tests/test_legacy_repo_pricing_apply_discount.py" in patch
+    assert "pytest tests -q" in patch
+
+
+def test_forge_pipeline_produces_green_suite_and_patch():
+    one_mutant = (next(item for item in MUTATIONS if item.id == "bulk_threshold_ge_to_gt"),)
+    artifacts = forge_legacy_repo(max_cases_per_function=2, mutations=one_mutant)
+
+    assert artifacts.green.ok, artifacts.green.stdout + artifacts.green.stderr
+    assert artifacts.suite.assertion_count > 0
+    assert artifacts.mutation.killed > 0
+    assert artifacts.patch_path.exists()
+
+
+def test_inject_regression_causes_exactly_one_failure(tmp_path):
+    analysis = analyze(LEGACY_ROOT, package="legacy_repo")
+    suite = generate_suite(analysis)
+    run_dir = tmp_path / "inject"
+    run_dir.mkdir()
+    reset_sample(ROOT / "samples", run_dir)
+    write_suite(suite, run_dir)
+
+    result = run_injected_suite(run_dir)
+
+    assert not result.run.ok
+    assert result.run.failed == 1
