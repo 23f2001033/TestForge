@@ -1,54 +1,109 @@
 ---
-title: TestForge Characterization Lab
-emoji: 🔨
+title: TestForge
+emoji: "🔨"
 colorFrom: teal
 colorTo: amber
 sdk: gradio
 sdk_version: 4.44.0
+python_version: "3.12"
 app_file: app.py
 pinned: false
+license: mit
 tags:
   - build-small-hackathon
   - sponsor:openai
   - openai-codex
   - testing
   - agent
+  - python
+  - pytest
+  - developer-tools
+short_description: Freeze legacy Python behavior before refactoring
 ---
 
-# TestForge: Characterization Lab
+# 🔨 TestForge — Characterization tests for legacy Python code
 
-Point TestForge at untested legacy Python code and it forges a green pytest suite that freezes the current behavior before you refactor.
+**Track:** OpenAI Codex · **Prize target:** Best Use of Codex
 
-The demo path is deterministic and needs no model or GPU:
+Untested legacy Python code is scary to change because you do not know what
+behavior you are about to break. **TestForge** points at a small Python repo,
+discovers its public functions, executes the real code on representative inputs,
+and generates a green pytest suite that locks in current behavior. Then it
+proves the suite is not fake confidence by mutating the code and showing a
+headline **mutation score**.
 
-1. Analyze public functions in `samples/legacy_repo`.
-2. Pick compact input cases from signatures and type hints.
-3. Execute the real function and capture the actual return value or exception.
-4. Render pytest assertions from those captured facts.
-5. Run the suite.
-6. Mutate the source and report how many behavior changes the suite catches.
-7. Export a PR-style patch that adds the generated tests.
+> Built as **a coding agent built by a coding agent**. The goal is not "AI
+> writes tests." The goal is "AI creates a runnable, inspectable, regression-
+> catching safety net before you refactor."
 
-## Trust Model
+---
 
-**Layer 1: capture then assert.** TestForge never asks a model what the output should be. It runs the real code first, then writes assertions against observed behavior. That makes the suite green by construction and prevents empty tests like `assert True`.
+## Why this is trustworthy: the code verifies itself
 
-**Layer 2: mutation score.** A passing suite is not enough. TestForge applies a small deterministic mutation catalog and shows the headline metric: `Mutation score: X/Y behavior changes detected`.
+The core design choice is **capture-then-assert**.
 
-**Layer 3: model enhancement.** Optional small-model input suggestions are left as an enhancement path. The shipped demo is intentionally model-free so judges can run it instantly.
+For every discovered function, TestForge chooses a few inputs, **runs the real
+function**, records the actual return value or exception, and only then emits
+pytest assertions.
 
-## How Codex Built This
+```python
+def test_apply_discount_case_1():
+    assert apply_discount(100.0, 10.0) == 90.0
 
-This repo was built end-to-end with OpenAI Codex in milestone commits:
+def test_with_tax_case_4():
+    with pytest.raises(ValueError):
+        with_tax(100.0, -1.0)
+```
 
-- `Add legacy sample and AST analyzer`: created the untested legacy package and AST discovery for public functions.
-- `Add deterministic capture runner`: added input inference, capture-then-assert rendering, subprocess pytest execution, and repo-local pytest temp handling.
-- `Add deterministic mutation scoring`: added the hand-rolled mutation catalog and scoring loop.
-- `Add forge app orchestration`: added agent orchestration, Gradio UI, live injected regression, and PR patch export.
+This means:
 
-The main engineering choice was to keep AI out of the source of truth. The current code is the authority; Codex built the agent that observes it, writes tests from observations, and then proves those tests can catch regressions.
+- every generated test is green on the current code by construction
+- every test calls a real public function, so it cannot collapse into `assert True`
+- the expected value comes from execution, not model guesswork
 
-## Run Locally
+Then TestForge applies a fixed catalog of source mutations and reruns the same
+generated suite. The result is a visible quality metric like:
+
+```text
+Mutation score: 7/9 behavior changes detected
+```
+
+That turns "the AI made tests" into "the AI made tests that demonstrably catch
+regressions."
+
+---
+
+## Models
+
+This shipped version is intentionally **deterministic and model-free** so the
+demo works with **no model and no GPU**.
+
+| Job | Current implementation | Fallback |
+|---|---|---|
+| Input generation | Type-hint-driven deterministic cases | Fixed mixed literals |
+| Test expectation generation | Real code execution | None needed |
+| Quality proof | Hand-rolled mutation scoring | None needed |
+
+This keeps the demo fast, inspectable, and stable under hackathon time
+pressure. A future enhancement path is to let a small coder model propose extra
+edge-case inputs, but only accept those cases if they improve coverage or the
+mutation score.
+
+---
+
+## How it works
+
+```text
+Pick bundled legacy repo
+  -> Analyze        : AST discovery of public functions and signatures
+  -> Generate       : choose deterministic inputs and capture real outputs
+  -> Render         : write pytest characterization tests
+  -> Run            : execute pytest in a subprocess
+  -> Score          : apply deterministic mutations and count killed mutants
+  -> Export         : produce a PR-style patch adding tests/
+```
+
+## Run locally
 
 ```bash
 python -m pip install -r requirements.txt
@@ -56,16 +111,74 @@ python -m pytest -q
 python app.py
 ```
 
-## Demo Arc
+Then click **Forge Tests** to generate a full suite for the bundled sample repo,
+inspect the generated tests, and see the mutation score. Click **Inject a
+regression** to watch the same suite turn red on a controlled behavior change.
 
-1. Click **Forge Tests**.
-2. See the agent log, generated tests, green pytest result, coverage, and mutation score.
-3. Click **Inject a regression**.
-4. The same generated suite turns red on the controlled behavior change.
-5. Download `testforge.patch` as a PR-ready artifact.
+## Tests
 
-## Scope Notes
+```bash
+python -m pytest -q
+```
 
-- Upload-your-own repo and model-assisted input search are intentionally cut for the deadline.
-- The deterministic path is the qualifying demo: no GPU, no weights, no network.
-- All generated tests call real public functions and assert captured returns or captured exceptions.
+The project's own test suite currently covers:
+
+- analyzer discovery and arity checks
+- capture of returned values and raised exceptions
+- deterministic suite generation staying green
+- runner parsing for passing and failing suites
+- deterministic mutation scoring
+- PR patch export
+- forge pipeline smoke path
+- injected regression causing exactly one failure
+
+## Project layout
+
+```text
+app.py                 Gradio UI + orchestration
+agent.py               forge pipeline for the bundled sample repo
+analyzer.py            AST discovery of public functions and methods
+generator.py           deterministic inputs, capture, and pytest rendering
+runner.py              subprocess pytest execution and parsing
+mutator.py             hand-rolled mutation catalog and mutation score
+patch.py               PR-style unified diff export
+inject.py              controlled one-click demo regression
+samples/legacy_repo/   bundled untested Python target repo
+tests/test_testforge.py
+```
+
+## Demo arc
+
+1. Click **Forge Tests**
+2. Watch TestForge analyze the sample repo and generate tests from real execution
+3. See a green pytest result and the mutation score
+4. Click **Inject a regression**
+5. Watch the same suite fail on exactly one controlled change
+6. Download `testforge.patch` as a PR-style artifact
+
+## Codex build log
+
+This repo was built in milestone commits through OpenAI Codex:
+
+- `Add legacy sample and AST analyzer`
+- `Add deterministic capture runner`
+- `Add deterministic mutation scoring`
+- `Add forge app orchestration`
+- `Document hackathon submission`
+
+The most important product decision was keeping the **source of truth in the
+code itself**, not in the model. Codex built the tooling and loop around that
+principle.
+
+## Privacy
+
+The bundled target repo is synthetic and local. The deterministic demo path
+uses no external model, no database, and no persistent user storage.
+
+---
+
+## Submission links
+
+- 🤗 **Live Space:** add your Hugging Face Space URL here
+- 🎥 **Demo video:** add your demo video link here
+- 📣 **Social post:** add your social post link here
